@@ -4,6 +4,7 @@ INPUT = "__input__"
 CONFIG_KEY_SEND = "__pregel_send"
 CONFIG_KEY_READ = "__pregel_read"
 CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer"
+CONFIG_KEY_KV = "__pregel_kv"
 CONFIG_KEY_RESUMING = "__pregel_resuming"
 INTERRUPT = "__interrupt__"
 TASKS = "__pregel_tasks"
@@ -13,6 +14,7 @@ RESERVED = {
     CONFIG_KEY_SEND,
     CONFIG_KEY_READ,
     CONFIG_KEY_CHECKPOINTER,
+    CONFIG_KEY_KV,
     CONFIG_KEY_RESUMING,
     INPUT,
 }

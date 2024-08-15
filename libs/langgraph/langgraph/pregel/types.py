@@ -4,6 +4,7 @@ from typing import Any, Callable, Literal, NamedTuple, Optional, Type, Union
 from langchain_core.runnables import Runnable, RunnableConfig
 
 from langgraph.checkpoint.base import CheckpointMetadata
+from langgraph.constants import Interrupt
 
 
 def default_retry_on(exc: Exception) -> bool:
@@ -74,7 +75,7 @@ class PregelExecutableTask(NamedTuple):
 class StateSnapshot(NamedTuple):
     values: Union[dict[str, Any], Any]
     """Current values of channels"""
-    next: tuple[str]
+    next: tuple[str, ...]
     """Nodes to execute in the next step, if any"""
     config: RunnableConfig
     """Config used to fetch this snapshot"""
@@ -84,6 +85,8 @@ class StateSnapshot(NamedTuple):
     """Timestamp of snapshot creation"""
     parent_config: Optional[RunnableConfig] = None
     """Config used to fetch the parent snapshot, if any"""
+    interrupts: tuple[Interrupt, ...] = ()
+    """Interruptions currently waiting to be processed"""
 
 
 All = Literal["*"]

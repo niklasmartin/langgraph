@@ -379,6 +379,7 @@ class Pregel(
                 -1,
                 for_execution=False,
             )
+
             return StateSnapshot(
                 read_channels(channels, self.stream_channels_asis),
                 tuple(t.name for t in next_tasks),
@@ -386,6 +387,7 @@ class Pregel(
                 saved.metadata if saved else None,
                 saved.checkpoint["ts"] if saved else None,
                 saved.parent_config if saved else None,
+                tuple(v for tid, n, v in saved.pending_writes or [] if n == INTERRUPT),
             )
 
     async def aget_state(self, config: RunnableConfig) -> StateSnapshot:

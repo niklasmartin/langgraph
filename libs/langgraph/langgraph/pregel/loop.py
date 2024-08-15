@@ -19,6 +19,7 @@ from typing import (
     TypeVar,
     Union,
 )
+from uuid import UUID
 
 from langchain_core.callbacks import AsyncParentRunManager, ParentRunManager
 from langchain_core.runnables import RunnableConfig
@@ -39,7 +40,13 @@ from langgraph.checkpoint.base import (
     create_checkpoint,
     empty_checkpoint,
 )
-from langgraph.constants import CONFIG_KEY_READ, CONFIG_KEY_RESUMING, INPUT, INTERRUPT
+from langgraph.constants import (
+    CONFIG_KEY_READ,
+    CONFIG_KEY_RESUMING,
+    INPUT,
+    INTERRUPT,
+    Interrupt,
+)
 from langgraph.errors import EmptyInputError, GraphInterrupt
 from langgraph.managed.base import (
     AsyncManagedValuesManager,
@@ -200,11 +207,16 @@ class PregelLoop:
                 }
             )
             # after execution, check if we should interrupt
-            if should_interrupt(self.checkpoint, interrupt_after, self.tasks):
+            if nodes := should_interrupt(self.checkpoint, interrupt_after, self.tasks):
                 self.status = "interrupt_after"
+                checkpoint_ns = self.config["configurable"].get("checkpoint_ns", "")
+                interrupts = [Interrupt("after", f"{checkpoint_ns}|{n}") for n in nodes]
                 if self.is_nested:
-                    raise GraphInterrupt(self)
+                    raise GraphInterrupt(interrupts)
                 else:
+                    self.put_writes(
+                        str(UUID(int=0)), [(INTERRUPT, i) for i in interrupts]
+                    )
                     return False
         else:
             return False
@@ -249,11 +261,14 @@ class PregelLoop:
             )
 
         # before execution, check if we should interrupt
-        if should_interrupt(self.checkpoint, interrupt_before, self.tasks):
+        if nodes := should_interrupt(self.checkpoint, interrupt_before, self.tasks):
             self.status = "interrupt_before"
+            checkpoint_ns = self.config["configurable"].get("checkpoint_ns", "")
+            interrupts = [Interrupt("before", f"{checkpoint_ns}|{n}") for n in nodes]
             if self.is_nested:
-                raise GraphInterrupt()
+                raise GraphInterrupt(interrupts)
             else:
+                self.put_writes(str(UUID(int=0)), [(INTERRUPT, i) for i in interrupts])
                 return False
 
         # produce debug output
@@ -381,7 +396,12 @@ class PregelLoop:
         exc_value: Optional[BaseException],
         traceback: Optional[TracebackType],
     ) -> Optional[bool]:
-        if exc_type is GraphInterrupt and not self.is_nested:
+        print("trying to suppress", exc_value)
+        if isinstance(exc_value, GraphInterrupt) and not self.is_nested:
+            print("suppressing")
+            self.put_writes(
+                str(UUID(int=0)), [(INTERRUPT, i) for i in exc_value.args[0]]
+            )
             return True
 
 
@@ -396,7 +416,6 @@ class SyncPregelLoop(PregelLoop, ContextManager):
     ) -> None:
         super().__init__(input, config=config, checkpointer=checkpointer, graph=graph)
         self.stack = ExitStack()
-        self.stack.push(self._suppress_interrupt)
         if checkpointer:
             self.checkpointer_get_next_version = checkpointer.get_next_version
             self.checkpointer_put_writes = checkpointer.put_writes
@@ -444,6 +463,7 @@ class SyncPregelLoop(PregelLoop, ContextManager):
         self.managed = self.stack.enter_context(
             ManagedValuesManager(self.graph.managed_values_dict, self.config)
         )
+        self.stack.push(self._suppress_interrupt)
         self.status = "pending"
         self.step = self.checkpoint_metadata["step"] + 1
         self.stop = self.step + self.config["recursion_limit"] + 1
@@ -473,7 +493,6 @@ class AsyncPregelLoop(PregelLoop, AsyncContextManager):
     ) -> None:
         super().__init__(input, config=config, checkpointer=checkpointer, graph=graph)
         self.stack = AsyncExitStack()
-        self.stack.push(self._suppress_interrupt)
         if checkpointer:
             self.checkpointer_get_next_version = checkpointer.get_next_version
             self.checkpointer_put_writes = checkpointer.aput_writes
@@ -523,6 +542,7 @@ class AsyncPregelLoop(PregelLoop, AsyncContextManager):
         self.managed = await self.stack.enter_async_context(
             AsyncManagedValuesManager(self.graph.managed_values_dict, self.config)
         )
+        self.stack.push(self._suppress_interrupt)
         self.status = "pending"
         self.step = self.checkpoint_metadata["step"] + 1
         self.stop = self.step + self.config["recursion_limit"] + 1

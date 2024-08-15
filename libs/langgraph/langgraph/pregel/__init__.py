@@ -71,6 +71,7 @@ from langgraph.constants import (
     INTERRUPT,
 )
 from langgraph.errors import GraphRecursionError, InvalidUpdateError
+from langgraph.kv.base import BaseKV
 from langgraph.managed.base import (
     AsyncManagedValuesManager,
     ManagedValuesManager,
@@ -218,6 +219,9 @@ class Pregel(
 
     checkpointer: Optional[BaseCheckpointSaver] = None
     """Checkpointer used to save and load graph state. Defaults to None."""
+
+    kv: Optional[BaseKV] = None
+    """Key-value store to use. Defaults to None."""
 
     retry_policy: Optional[RetryPolicy] = None
     """Retry policy to use when running tasks. Set to None to disable."""
@@ -629,7 +633,7 @@ class Pregel(
                 ),
             )
             # apply to checkpoint and save
-            apply_writes(
+            assert not apply_writes(
                 checkpoint, channels, [task], self.checkpointer.get_next_version
             )
 
@@ -745,7 +749,7 @@ class Pregel(
                 ),
             )
             # apply to checkpoint and save
-            apply_writes(
+            assert not apply_writes(
                 checkpoint, channels, [task], self.checkpointer.get_next_version
             )
 

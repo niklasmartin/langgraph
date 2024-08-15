@@ -6,9 +6,12 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    AsyncIterator,
     Generator,
     Generic,
+    Iterator,
     NamedTuple,
+    Sequence,
     Type,
     TypeVar,
     Union,
@@ -21,6 +24,7 @@ if TYPE_CHECKING:
     from langgraph.pregel.types import PregelTaskDescription
 
 V = TypeVar("V")
+U = TypeVar("U")
 
 
 class ManagedValue(ABC, Generic[V]):
@@ -29,9 +33,7 @@ class ManagedValue(ABC, Generic[V]):
 
     @classmethod
     @contextmanager
-    def enter(
-        cls, config: RunnableConfig, **kwargs: Any
-    ) -> Generator[Self, None, None]:
+    def enter(cls, config: RunnableConfig, **kwargs: Any) -> Iterator[Self]:
         try:
             value = cls(config, **kwargs)
             yield value
@@ -45,9 +47,7 @@ class ManagedValue(ABC, Generic[V]):
 
     @classmethod
     @asynccontextmanager
-    async def aenter(
-        cls, config: RunnableConfig, **kwargs: Any
-    ) -> AsyncGenerator[Self, None]:
+    async def aenter(cls, config: RunnableConfig, **kwargs: Any) -> AsyncIterator[Self]:
         try:
             value = cls(config, **kwargs)
             yield value
@@ -64,6 +64,16 @@ class ManagedValue(ABC, Generic[V]):
         ...
 
 
+class WritableManagedValue(Generic[V, U], ManagedValue[V], ABC):
+    @abstractmethod
+    def update(self, writes: Sequence[U]) -> None:
+        ...
+
+    @abstractmethod
+    async def aupdate(self, writes: Sequence[U]) -> None:
+        ...
+
+
 class ConfiguredManagedValue(NamedTuple):
     cls: Type[ManagedValue]
     kwargs: dict[str, Any]
@@ -77,6 +87,24 @@ ManagedValueMapping = dict[str, ManagedValue]
 def is_managed_value(value: Any) -> TypeGuard[ManagedValueSpec]:
     return (isclass(value) and issubclass(value, ManagedValue)) or isinstance(
         value, ConfiguredManagedValue
+    )
+
+
+def is_readonly_managed_value(value: Any) -> TypeGuard[Type[ManagedValue]]:
+    return (
+        isclass(value)
+        and issubclass(value, ManagedValue)
+        and not issubclass(value, WritableManagedValue)
+    ) or (
+        isinstance(value, ConfiguredManagedValue)
+        and not issubclass(value.cls, WritableManagedValue)
+    )
+
+
+def is_writable_managed_value(value: Any) -> TypeGuard[Type[WritableManagedValue]]:
+    return (isclass(value) and issubclass(value, WritableManagedValue)) or (
+        isinstance(value, ConfiguredManagedValue)
+        and issubclass(value.cls, WritableManagedValue)
     )
 
 
@@ -123,3 +151,6 @@ async def AsyncManagedValuesManager(
             yield {tasks[task]: task.result() for task in done}
     else:
         yield {}
+
+
+ChannelKeyPlaceholder = object()
